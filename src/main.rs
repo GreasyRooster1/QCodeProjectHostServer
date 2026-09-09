@@ -13,6 +13,10 @@ use futures::executor::block_on;
 use log::{debug, error, info, warn};
 use simplelog::*;
 use derive_more::Display;
+use tracing_appender::rolling;
+use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 pub const THREAD_POOL_SIZE:usize = 64;
 pub const NOT_FOUND_PAGE:&str = include_str!("../404.html");
@@ -116,12 +120,33 @@ impl ResponseError for ApiError {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    if let Err(e) = dotenvy::dotenv() {
+        println!("cargo:warning=Could not load .env file: {}", e);
+    }
+
+    let file_appender = rolling::Builder::new()
+        .rotation(rolling::Rotation::DAILY)
+        .filename_prefix("api.log")
+        .max_log_files(14)
+        .build("./logs")
+        .expect("failed to build appender");
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
+    tracing_subscriber::registry()
+        .with(EnvFilter::from_default_env())
+        // file layer — daily rotating, no ANSI colors in files
+        .with(fmt::layer().with_writer(non_blocking).with_ansi(false))
+        // stdout layer — keep console output too
+        .with(fmt::layer().with_writer(std::io::stdout))
+        .init();
+
+
     HttpServer::new(||
         App::new()
         .service(serve_web)
         .default_service(web::route().to(not_found))
     )
-        .bind(("0.0.0.0", 8080))?
+        .bind(("localhost", 8080))?
         .run()
         .await
 }
