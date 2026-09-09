@@ -157,6 +157,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(Logger::new(r#"%{CF-Connecting-IP}i (%a) "%r" %s %b "%{Referer}i" "%{User-Agent}i" %T"#))
             .wrap(cors)
             .service(serve_web)
+            .service(serve_web_dev)
             .default_service(web::route().to(not_found))
     })
         .bind(("localhost", 8080))?
@@ -168,7 +169,33 @@ async fn main() -> std::io::Result<()> {
 #[get("/{path:.*}")]
 async fn serve_web(req: HttpRequest, path: web::Path<String>) -> Result<NamedFile,ApiError> {
     let mut uri = path.into_inner();
-    if uri == "/" {
+    if uri == "" {
+        uri ="index.html".to_string();
+    }
+    let host = req.headers().get("Host").unwrap().to_str().unwrap();
+    let path = match get_path_from_host(host.to_string(), &uri) {
+        Ok(p) => p,
+        Err(e) => {
+            warn!("error getting on {host}: {:?}", e);
+            return Err(ApiError::PathParseFailed);
+        }
+    };
+    info!("Requested path {:?}",path);
+
+    let file = match NamedFile::open_async(path).await{
+        Ok(f) => f,
+        Err(e) => {
+            warn!("error on serving file on {host}: {:?}", e);
+            return Err(ApiError::FileOpenFailed);
+        }
+    };
+    Ok(file)
+}
+
+#[get("/__DEV_SERVER__/{username:String}/{project:String}/{path:.*}")]
+async fn serve_web_dev(req: HttpRequest, path: web::Path<String>) -> Result<NamedFile,ApiError> {
+    let mut uri = path.into_inner();
+    if uri == "" {
         uri ="index.html".to_string();
     }
     let host = req.headers().get("Host").unwrap().to_str().unwrap();
@@ -231,7 +258,7 @@ async fn not_found(req: HttpRequest) -> impl Responder{
 
 fn get_path_from_host(host:String,uri:&String)->Result<String,String>{
     let words: Vec<_> = host.split(".").collect();
-    let path = PathBuf::from_str(format!("./data/{}{}",words[0],uri).as_str()).unwrap();
+    let path = PathBuf::from_str(format!("./data/{}/{}",words[0],uri).as_str()).unwrap();
     if path.components().any(|x| x == Component::ParentDir) {
         warn!("directory traversal attempted!");
         return Err("directory traversal".to_string());
