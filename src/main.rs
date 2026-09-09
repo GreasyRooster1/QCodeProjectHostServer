@@ -118,11 +118,11 @@ async fn main() -> std::io::Result<()> {
         .await
 }
 
-#[get("/{tail:.*}")]
-async fn serve_web(req: HttpRequest) -> impl Responder{
-    let mut uri = req.uri();
-    if uri.path() == "/" {
-        uri = &Uri::from_str("index.html").unwrap();
+#[get("/{path:.*}")]
+async fn serve_web(req: HttpRequest, path: web::Path<String>) -> impl Responder{
+    let mut uri = path.into_inner();
+    if uri == "/" {
+        uri ="index.html".to_string();
     }
     let host = req.headers().get("Host").unwrap().to_str().unwrap();
     let path = match get_path_from_host(host.to_string(),uri) {
@@ -176,9 +176,9 @@ fn put_uri(request: &Request,uri:String)->Response {
 }
 
 
-fn get_path_from_host(host:String,uri:&Uri)->Result<String,String>{
+fn get_path_from_host(host:String,uri:&String)->Result<String,String>{
     let words: Vec<_> = host.split(".").collect();
-    let path = PathBuf::from_str(format!("./data/{}{}",words[0],uri.path()).as_str()).unwrap();
+    let path = PathBuf::from_str(format!("./data/{}{}",words[0],uri).as_str()).unwrap();
     if path.components().any(|x| x == Component::ParentDir) {
         warn!("directory traversal attempted!");
         return Err("directory traversal".to_string());
