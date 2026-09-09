@@ -16,7 +16,7 @@ use std::io::{BufRead, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Mutex;
-use rs_firebase_admin_sdk::auth::token::TokenVerifier;
+use actix_web::{get, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use futures::executor::block_on;
 use log::{debug, error, info, warn};
 use simplelog::*;
@@ -38,8 +38,8 @@ struct SessionData {
 }
 
 
-#[tokio::main]
-async fn main() {
+// #[tokio::main]
+async fn bye() {
 
     CombinedLogger::init(
         vec![
@@ -85,8 +85,7 @@ async fn main() {
                     let req_path = request.url();
 
                     if request.method() == "GET" {
-                        debug!("{} {} {} {} requested file read",request.remote_addr(), request.method(), request.raw_url(),request.header("Host").unwrap());
-                        resolve_uri(request, req_path)
+
                     } else if request.method() == "PUT" {
                         info!("{} {} {} {} requested file edit",request.remote_addr(), request.method(), request.raw_url(),request.header("Host").unwrap());
                         put_uri(request, req_path)
@@ -103,6 +102,22 @@ async fn main() {
             )
         })
     });//,cert,pkey).unwrap().run();
+}
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    HttpServer::new(||
+        App::new()
+        .service(serve_web)
+    )
+        .bind(("0.0.0.0", 8080))?
+        .run()
+        .await
+}
+
+#[get("/{tail:.*}")]
+fn serve_web(req: HttpRequest) -> impl Responder{
+    resolve_uri(request, req_path)
 }
 
 
@@ -136,20 +151,20 @@ fn put_uri(request: &Request,uri:String)->Response {
     rouille::Response::empty_204()
 }
 
-fn resolve_uri(request: &Request,uri:String)->Response{
-    let host = request.header("Host").unwrap();
+fn resolve_uri(req: HttpRequest,uri:String)->impl Responder{
+    let host = req.headers().get("Host").unwrap().to_str().unwrap();
     let path = match get_path_from_host(host.to_string(),uri) {
         Ok(p) => p,
         Err(e) => {
-            warn!("{} {} {} {} error getting path {:?}",request.remote_addr(), request.method(), request.raw_url(),request.header("Host").unwrap(), e);
-            return rouille::Response::empty_404()
+            warn!("error getting on {host}: {:?}", e);
+            return HttpResponse::NotFound()
         }
     };
     info!("{} {} {} {} Requested path {:?}",request.remote_addr(), request.method(), request.raw_url(),request.header("Host").unwrap(), path);
     let contents = match File::open(&path) {
         Ok(c) => c,
         Err(_) => {
-            return Response::from_data("text/html", NOT_FOUND_PAGE).with_unique_header("X-Robots-Tag","no-index")
+            return HttpResponse:: ::from_data("text/html", NOT_FOUND_PAGE).with_unique_header("X-Robots-Tag","no-index")
         }
     };
     let extension = Path::new(&path)
