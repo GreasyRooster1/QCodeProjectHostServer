@@ -6,9 +6,11 @@ use std::io::{BufRead, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Mutex;
+use actix_cors::Cors;
 use actix_files::NamedFile;
 use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder, ResponseError};
-use actix_web::http::Uri;
+use actix_web::http::{header, Uri};
+use actix_web::middleware::Logger;
 use futures::executor::block_on;
 use log::{debug, error, info, warn};
 use simplelog::*;
@@ -133,6 +135,7 @@ async fn main() -> std::io::Result<()> {
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
 
     tracing_subscriber::registry()
+
         .with(EnvFilter::from_default_env())
         // file layer — daily rotating, no ANSI colors in files
         .with(fmt::layer().with_writer(non_blocking).with_ansi(false))
@@ -141,14 +144,25 @@ async fn main() -> std::io::Result<()> {
         .init();
 
 
-    HttpServer::new(||
+    HttpServer::new(|| {
+        let cors = Cors::default()
+            .allowed_origin("http://localhost:5173")
+            .allowed_origin("http://localhost:8080")
+            .allowed_origin("https://code.esporterz.com")
+            .allowed_origin("https://codestaging.esporterz.com")
+            .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"])
+            .allowed_headers(vec![header::AUTHORIZATION, header::CONTENT_TYPE])
+            .max_age(3600);
         App::new()
-        .service(serve_web)
-        .default_service(web::route().to(not_found))
-    )
+            .wrap(Logger::new(r#"%{CF-Connecting-IP}i (%a) "%r" %s %b "%{Referer}i" "%{User-Agent}i" %T"#))
+            .wrap(cors)
+            .service(serve_web)
+            .default_service(web::route().to(not_found))
+    })
         .bind(("localhost", 8080))?
         .run()
         .await
+
 }
 
 #[get("/{path:.*}")]
