@@ -16,7 +16,7 @@ use std::io::{BufRead, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Mutex;
-use actix_web::{get, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use futures::executor::block_on;
 use log::{debug, error, info, warn};
 use simplelog::*;
@@ -109,6 +109,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(||
         App::new()
         .service(serve_web)
+        .default_service(web::route().to(not_found))
     )
         .bind(("0.0.0.0", 8080))?
         .run()
@@ -118,6 +119,12 @@ async fn main() -> std::io::Result<()> {
 #[get("/{tail:.*}")]
 fn serve_web(req: HttpRequest) -> impl Responder{
     resolve_uri(request, req_path)
+}
+
+
+fn not_found(req: HttpRequest) -> impl Responder{
+    warn!("Not found: {}", req.uri());
+    NOT_FOUND_PAGE
 }
 
 
@@ -164,7 +171,7 @@ fn resolve_uri(req: HttpRequest,uri:String)->impl Responder{
     let contents = match File::open(&path) {
         Ok(c) => c,
         Err(_) => {
-            return HttpResponse:: ::from_data("text/html", NOT_FOUND_PAGE).with_unique_header("X-Robots-Tag","no-index")
+            return HttpResponse::NotFound()
         }
     };
     let extension = Path::new(&path)
