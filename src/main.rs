@@ -16,7 +16,9 @@ use std::io::{BufRead, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Mutex;
+use actix_files::NamedFile;
 use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::http::Uri;
 use futures::executor::block_on;
 use log::{debug, error, info, warn};
 use simplelog::*;
@@ -117,8 +119,23 @@ async fn main() -> std::io::Result<()> {
 }
 
 #[get("/{tail:.*}")]
-fn serve_web(req: HttpRequest) -> impl Responder{
-    resolve_uri(request, req_path)
+async fn serve_web(req: HttpRequest) -> impl Responder{
+    let mut uri = req.uri();
+    if uri.path() == "/" {
+        uri = &Uri::from_str("index.html").unwrap();
+    }
+    let host = req.headers().get("Host").unwrap().to_str().unwrap();
+    let path = match get_path_from_host(host.to_string(),uri) {
+        Ok(p) => p,
+        Err(e) => {
+            warn!("error getting on {host}: {:?}", e);
+            return HttpResponse::NotFound()
+        }
+    };
+    info!("Requested path {:?}",path);
+
+    let file = NamedFile::open_async(path).await?;
+    Ok(file)
 }
 
 
@@ -158,32 +175,12 @@ fn put_uri(request: &Request,uri:String)->Response {
     rouille::Response::empty_204()
 }
 
-fn resolve_uri(req: HttpRequest,uri:String)->impl Responder{
-    let host = req.headers().get("Host").unwrap().to_str().unwrap();
-    let path = match get_path_from_host(host.to_string(),uri) {
-        Ok(p) => p,
-        Err(e) => {
-            warn!("error getting on {host}: {:?}", e);
-            return HttpResponse::NotFound()
-        }
-    };
-    info!("{} {} {} {} Requested path {:?}",request.remote_addr(), request.method(), request.raw_url(),request.header("Host").unwrap(), path);
-    let contents = match File::open(&path) {
-        Ok(c) => c,
-        Err(_) => {
-            return HttpResponse::NotFound()
-        }
-    };
-    let extension = Path::new(&path)
-        .extension()
-        .and_then(OsStr::to_str).unwrap();
-    Response::from_file(extension_to_mime(extension),contents).with_unique_header("X-Robots-Tag","no-index")
-}
 
-fn get_path_from_host(host:String,uri:String)->Result<String,String>{
+fn get_path_from_host(host:String,uri:&Uri)->Result<String,String>{
     let words: Vec<_> = host.split(".").collect();
-    let path = PathBuf::from_str(format!("./data/{0}{uri}",words[0]).as_str()).unwrap();
+    let path = PathBuf::from_str(format!("./data/{}{}",words[0],uri.path()).as_str()).unwrap();
     if path.components().any(|x| x == Component::ParentDir) {
+        warn!("directory traversal attempted!");
         return Err("directory traversal".to_string());
     }
     Ok(path.as_path().to_str().unwrap().to_string())
