@@ -8,7 +8,7 @@ use std::str::FromStr;
 use std::sync::Mutex;
 use actix_cors::Cors;
 use actix_files::NamedFile;
-use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder, ResponseError};
+use actix_web::{get, guard, web, App, HttpRequest, HttpResponse, HttpServer, Responder, ResponseError};
 use actix_web::http::{header, Uri};
 use actix_web::middleware::Logger;
 use futures::executor::block_on;
@@ -157,7 +157,11 @@ async fn main() -> std::io::Result<()> {
             .wrap(Logger::new(r#"%{CF-Connecting-IP}i (%a) "%r" %s %b "%{Referer}i" "%{User-Agent}i" %T"#))
             .wrap(cors)
             .service(serve_web)
-            .service(serve_web_dev)
+            // .service(
+            //     web::scope("__DEV_SERVER__")
+            //         .service(serve_web_dev)
+            // )
+
             .default_service(web::route().to(not_found))
     })
         .bind(("localhost", 8080))?
@@ -192,13 +196,14 @@ async fn serve_web(req: HttpRequest, path: web::Path<String>) -> Result<NamedFil
     Ok(file)
 }
 
-#[get("/__DEV_SERVER__/{username:String}/{project:String}/{path:.*}")]
-async fn serve_web_dev(req: HttpRequest, path: web::Path<String>) -> Result<NamedFile,ApiError> {
+#[get("/{username:String}/{project:String}/{path:.*}")]
+async fn serve_web_dev(req: HttpRequest, username:String, project:String,path: web::Path<String>) -> Result<NamedFile,ApiError> {
+    info!("DEV Requested path {:?}",req.uri());
     let mut uri = path.into_inner();
     if uri == "" {
         uri ="index.html".to_string();
     }
-    let host = req.headers().get("Host").unwrap().to_str().unwrap();
+    let host = format!("{project}.{username}.esporterz.com");
     let path = match get_path_from_host(host.to_string(), &uri) {
         Ok(p) => p,
         Err(e) => {
@@ -211,7 +216,7 @@ async fn serve_web_dev(req: HttpRequest, path: web::Path<String>) -> Result<Name
     let file = match NamedFile::open_async(path).await{
         Ok(f) => f,
         Err(e) => {
-            warn!("error on serving file on {host}: {:?}", e);
+            println!("error on serving file on {host}: {:?}", e);
             return Err(ApiError::FileOpenFailed);
         }
     };
