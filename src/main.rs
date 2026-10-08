@@ -8,9 +8,10 @@ use std::str::FromStr;
 use std::sync::Mutex;
 use actix_cors::Cors;
 use actix_files::NamedFile;
-use actix_web::{get, guard, web, App, HttpRequest, HttpResponse, HttpServer, Responder, ResponseError};
+use actix_web::{get, guard, put, web, App, HttpRequest, HttpResponse, HttpServer, Responder, ResponseError};
 use actix_web::http::{header, Uri};
 use actix_web::middleware::Logger;
+use actix_web::web::put;
 use futures::executor::block_on;
 use log::{debug, error, info, warn};
 use simplelog::*;
@@ -109,6 +110,10 @@ enum ApiError {
     PathParseFailed,
     #[display("Failed to open file")]
     FileOpenFailed,
+    #[display("Failed to write file")]
+    FileWriteFailed,
+    #[display("Failed to clear file")]
+    FileClearFailed,
 }
 
 impl ResponseError for ApiError {
@@ -116,6 +121,8 @@ impl ResponseError for ApiError {
         match self {
             ApiError::PathParseFailed => actix_web::http::StatusCode::NOT_FOUND,
             ApiError::FileOpenFailed => actix_web::http::StatusCode::NOT_FOUND,
+            ApiError::FileWriteFailed => actix_web::http::StatusCode::NOT_FOUND,
+            ApiError::FileClearFailed => actix_web::http::StatusCode::NOT_FOUND,
         }
     }
 }
@@ -157,6 +164,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(Logger::new(r#"%{CF-Connecting-IP}i (%a) "%r" %s %b "%{Referer}i" "%{User-Agent}i" %T"#))
             .wrap(cors)
             .service(serve_web)
+            .service(put_web)
             // .service(
             //     web::scope("__DEV_SERVER__")
             //         .service(serve_web_dev)
@@ -194,6 +202,43 @@ async fn serve_web(req: HttpRequest, path: web::Path<String>) -> Result<NamedFil
         }
     };
     Ok(file)
+}
+
+#[put("/{path:.*}")]
+async fn put_web(req: HttpRequest, body: web::Bytes, path: web::Path<String>) -> Result<(),ApiError> {
+    let host = req.headers().get("Host").unwrap().to_str().unwrap();
+    let uri = path.into_inner();
+    let path = get_path_from_host(host.to_string(), &uri).unwrap();
+    let buffer = String::new();
+    let path_obj = Path::new(&path);
+
+    let bytes = body.bytes();
+    let _ = match fs::create_dir_all(path_obj.parent().unwrap()) {
+        Ok(_) => {}
+        Err(_) => {}
+    };
+    let mut file: File = File::create(&path).unwrap();
+
+    match file.write_all(&[]){
+        Ok(_) => {}
+        Err(e) => {
+            warn!("error clearing file: {:?}", e);
+            return Err(ApiError::FileClearFailed);
+        }
+    }
+    for byte in bytes {
+        match file.write(&[byte.unwrap()]){
+            Ok(_) => {}
+            Err(e) => {
+                warn!("error writing to file: {:?}", e);
+                return Err(ApiError::FileOpenFailed);
+            }
+        }
+    }
+
+    info!("wrote to path {:?}", path);
+
+    Ok(())
 }
 
 #[get("/{username:String}/{project:String}/{path:.*}")]
