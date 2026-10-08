@@ -308,7 +308,7 @@ async fn not_found(req: HttpRequest) -> impl Responder{
 
 fn get_path_from_host(host:String,uri:&String)->Result<String,String>{
     let words: Vec<_> = host.split(".").collect();
-    let path = PathBuf::from_str(format!("./data/{}/{}",words[0],uri).as_str()).unwrap();
+    let path = PathBuf::from_str(format!("./data/{}/{}/{}",words[1],words[0],uri).as_str()).unwrap();
     if path.components().any(|x| x == Component::ParentDir) {
         warn!("directory traversal attempted!");
         return Err("directory traversal".to_string());
