@@ -3,11 +3,13 @@ use std::{fs, io};
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io::{BufRead, Read, Write};
+use std::ops::Deref;
 use std::path::{Component, Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Mutex;
 use actix_cors::Cors;
 use actix_files::NamedFile;
+use actix_firebase_auth::{FirebaseAuth, FirebaseUser};
 use actix_web::{get, guard, put, web, App, HttpRequest, HttpResponse, HttpServer, Responder, ResponseError};
 use actix_web::http::{header, Uri};
 use actix_web::middleware::Logger;
@@ -24,8 +26,6 @@ use tracing_subscriber::util::SubscriberInitExt;
 pub const THREAD_POOL_SIZE:usize = 64;
 pub const NOT_FOUND_PAGE:&str = include_str!("../404.html");
 
-pub const HOST_IP:&str = "0.0.0.0";
-pub const HOST_PORT:&str = "80";
 pub const BLOCK_INDEXING:bool = true;
 
 //pub const WHITELIST_EXTENSIONS: [&str;16] = ["png","jpg","wav","mp3","html","css","js","jsx","ts","tsx","jpeg","webp","txt","csv","json","http"];
@@ -132,6 +132,7 @@ async fn main() -> std::io::Result<()> {
     if let Err(e) = dotenvy::dotenv() {
         println!("cargo:warning=Could not load .env file: {}", e);
     }
+    let auth = FirebaseAuth::new("qcode-cdfc6").await.expect("could not setup firebase auth");
 
     let file_appender = rolling::Builder::new()
         .rotation(rolling::Rotation::DAILY)
@@ -151,7 +152,7 @@ async fn main() -> std::io::Result<()> {
         .init();
 
 
-    HttpServer::new(|| {
+    HttpServer::new(move || {
         let cors = Cors::default()
             .allowed_origin("http://localhost:5173")
             .allowed_origin("http://localhost:8080")
@@ -163,6 +164,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(Logger::new(r#"%{CF-Connecting-IP}i (%a) "%r" %s %b "%{Referer}i" "%{User-Agent}i" %T"#))
             .wrap(cors)
+            .app_data(web::Data::new(auth.clone()))
             .service(serve_web)
             .service(put_web)
             // .service(
@@ -172,7 +174,7 @@ async fn main() -> std::io::Result<()> {
 
             .default_service(web::route().to(not_found))
     })
-        .bind(("localhost", 8080))?
+        .bind(("0.0.0.0", 8080))?
         .run()
         .await
 
@@ -205,7 +207,8 @@ async fn serve_web(req: HttpRequest, path: web::Path<String>) -> Result<NamedFil
 }
 
 #[put("/{path:.*}")]
-async fn put_web(req: HttpRequest, body: web::Bytes, path: web::Path<String>) -> Result<(),ApiError> {
+async fn put_web(req: HttpRequest, body: web::Bytes, path: web::Path<String>, user:FirebaseUser) -> Result<(),ApiError> {
+
     let host = req.headers().get("Host").unwrap().to_str().unwrap();
     let uri = path.into_inner();
     let path = get_path_from_host(host.to_string(), &uri).unwrap();
@@ -236,7 +239,7 @@ async fn put_web(req: HttpRequest, body: web::Bytes, path: web::Path<String>) ->
         }
     }
 
-    info!("wrote to path {:?}", path);
+    info!("wrote to path {:?} from user {:?}", path,user.email.unwrap().as_str());
 
     Ok(())
 }
