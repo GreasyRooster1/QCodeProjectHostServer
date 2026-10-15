@@ -174,7 +174,7 @@ async fn main() -> std::io::Result<()> {
 
             .default_service(web::route().to(not_found))
     })
-        .bind(("0.0.0.0", 8080))?
+        .bind(("0.0.0.0", 80))?
         .run()
         .await
 
