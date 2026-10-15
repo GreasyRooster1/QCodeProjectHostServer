@@ -174,7 +174,7 @@ async fn main() -> std::io::Result<()> {
 
             .default_service(web::route().to(not_found))
     })
-        .bind(("0.0.0.0", 80))?
+        .bind(("localhost", 3141))?
         .run()
         .await
 
@@ -248,8 +248,9 @@ async fn put_web(req: HttpRequest, body: web::Bytes, path: web::Path<String>, us
 async fn serve_web_dev(req: HttpRequest, username:String, project:String,path: web::Path<String>) -> Result<NamedFile,ApiError> {
     info!("DEV Requested path {:?}",req.uri());
     let mut uri = path.into_inner();
-    if uri == "" {
-        uri ="index.html".to_string();
+    let p = Path::new(&uri);
+    if p.is_dir() {
+        uri = format!("{uri}/index.html");
     }
     let host = format!("{username}.esporterz.com");
     let path = match get_path_from_host(host.to_string(), &uri) {
