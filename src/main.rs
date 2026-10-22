@@ -169,7 +169,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(Logger::new(r#"%{CF-Connecting-IP}i (%a) "%r" %s %b "%{Referer}i" "%{User-Agent}i" %T"#))
             .wrap(cors)
             .wrap_fn(|mut req, srv| {
-                req.head_mut().headers.remove("x-frame-options");
+                req.head_mut().headers.remove("X-Frame-Options");
                 srv.call(req)
             })
             .app_data(web::Data::new(auth.clone()))
