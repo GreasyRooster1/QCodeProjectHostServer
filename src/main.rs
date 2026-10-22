@@ -1,3 +1,4 @@
+use actix_web::dev::Service;
 use std::collections::HashMap;
 use std::{fs, io};
 use std::ffi::OsStr;
@@ -11,8 +12,10 @@ use actix_cors::Cors;
 use actix_files::NamedFile;
 use actix_firebase_auth::{FirebaseAuth, FirebaseUser};
 use actix_web::{get, guard, put, web, App, HttpRequest, HttpResponse, HttpServer, Responder, ResponseError};
+use actix_web::body::MessageBody;
+use actix_web::dev::ServiceRequest;
 use actix_web::http::{header, Uri};
-use actix_web::middleware::Logger;
+use actix_web::middleware::{from_fn, Logger, Next};
 use actix_web::web::put;
 use futures::executor::block_on;
 use log::{debug, error, info, warn};
@@ -153,7 +156,7 @@ async fn main() -> std::io::Result<()> {
 
 
     HttpServer::new(move || {
-        let cors = Cors::default()
+        let cors = Cors::permissive()
             .allowed_origin("http://localhost:5173")
             .allowed_origin("http://localhost:3000")
             .allowed_origin("http://localhost:8080")
@@ -165,6 +168,10 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(Logger::new(r#"%{CF-Connecting-IP}i (%a) "%r" %s %b "%{Referer}i" "%{User-Agent}i" %T"#))
             .wrap(cors)
+            .wrap_fn(|mut req, srv| {
+                req.head_mut().headers.remove("x-frame-options");
+                srv.call(req)
+            })
             .app_data(web::Data::new(auth.clone()))
             .service(serve_web)
             .service(put_web)
