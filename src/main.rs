@@ -1,3 +1,4 @@
+use futures::FutureExt;
 use actix_web::dev::Service;
 use std::collections::HashMap;
 use std::{fs, io};
@@ -170,7 +171,11 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .wrap_fn(|mut req, srv| {
                 req.head_mut().headers.remove("X-Frame-Options");
-                srv.call(req)
+                req.head_mut().headers.append("Content-Security-Policy".parse().unwrap(), "frame-ancestors *".parse().unwrap());
+                srv.call(req).map(|res| {
+                    println!("Hi from response");
+                    res
+                })
             })
             .app_data(web::Data::new(auth.clone()))
             .service(serve_web)
