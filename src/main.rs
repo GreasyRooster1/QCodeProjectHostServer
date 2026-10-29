@@ -170,14 +170,14 @@ async fn main() -> std::io::Result<()> {
             .wrap(Logger::new(r#"%{CF-Connecting-IP}i (%a) "%r" %s %b "%{Referer}i" "%{User-Agent}i" %T"#))
             .wrap(cors)
             .wrap_fn(|mut req, srv| {
-                req.head_mut().headers.remove("X-Frame-Options");
-                req.head_mut().headers.append("Content-Security-Policy".parse().unwrap(), "frame-ancestors *".parse().unwrap());
-                req.head_mut().headers.append("Cache-Control".parse().unwrap(), "no-store, no-cache, must-revalidate, proxy-revalidate".parse().unwrap());
-                req.head_mut().headers.append("Pragma".parse().unwrap(), "no-cache".parse().unwrap());
-                req.head_mut().headers.append("Expires".parse().unwrap(), "0".parse().unwrap());
                 srv.call(req).map(|res| {
                     println!("Hi from response");
-                    res
+                    let mut r = res.unwrap();
+                    r.headers_mut().append("Content-Security-Policy".parse().unwrap(), "frame-ancestors *".parse().unwrap());
+                    r.headers_mut().append("Cache-Control".parse().unwrap(), "no-store, no-cache, must-revalidate, proxy-revalidate".parse().unwrap());
+                    r.headers_mut().append("Pragma".parse().unwrap(), "no-cache".parse().unwrap());
+                    r.headers_mut().append("Expires".parse().unwrap(), "0".parse().unwrap());
+                    Ok(r)
                 })
             })
             .app_data(web::Data::new(auth.clone()))
