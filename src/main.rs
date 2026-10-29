@@ -172,6 +172,9 @@ async fn main() -> std::io::Result<()> {
             .wrap_fn(|mut req, srv| {
                 req.head_mut().headers.remove("X-Frame-Options");
                 req.head_mut().headers.append("Content-Security-Policy".parse().unwrap(), "frame-ancestors *".parse().unwrap());
+                req.head_mut().headers.append("Cache-Control".parse().unwrap(), "no-store, no-cache, must-revalidate, proxy-revalidate".parse().unwrap());
+                req.head_mut().headers.append("Pragma".parse().unwrap(), "no-cache".parse().unwrap());
+                req.head_mut().headers.append("Expires".parse().unwrap(), "0".parse().unwrap());
                 srv.call(req).map(|res| {
                     println!("Hi from response");
                     res
